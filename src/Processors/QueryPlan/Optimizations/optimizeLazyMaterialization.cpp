@@ -288,9 +288,15 @@ SplitExpressionStepResult splitExpressionStep(const ExpressionStep & expression_
     return { std::move(split_result.first), std::move(split_result.second), std::move(new_required_inputs) };
 }
 
+struct MainFilterStep
+{
+    FilterDAGInfo filter;
+    bool count_output_rows = false;
+};
+
 struct SplitFilterResult
 {
-    FilterDAGInfo main_filter_step;
+    MainFilterStep main_filter_step;
     ActionsDAG lazy_expression_step;
 
     /// Those are available input positions for the next step (main branch).
@@ -355,7 +361,10 @@ SplitFilterResult splitFilterStep(const FilterStep & filter_step, const std::vec
     filter_dag_info.column_name = name;
     filter_dag_info.do_remove_column = filter_step.removesFilterColumn();
 
-    return { std::move(filter_dag_info), std::move(split_result.second), std::move(new_required_inputs) };
+    return {
+        {std::move(filter_dag_info), filter_step.countsOutputRows()},
+        std::move(split_result.second),
+        std::move(new_required_inputs)};
 }
 
 ActionsDAG calculateGlobalOffset(ReadFromMergeTree & reading_step)
@@ -562,7 +571,7 @@ bool optimizeLazyMaterialization2(QueryPlan::Node & root, QueryPlan & query_plan
         // std::cerr << ".. Lazy header " << lazy_reading->getOutputHeader()->dumpNames() << std::endl;
     }
 
-    std::list<std::variant<ActionsDAG, FilterDAGInfo>> main_steps;
+    std::list<std::variant<ActionsDAG, MainFilterStep>> main_steps;
     std::list<ActionsDAG> lazy_steps;
 
     for (const auto & step_to_split : steps_to_split | std::views::reverse)
@@ -614,10 +623,15 @@ bool optimizeLazyMaterialization2(QueryPlan::Node & root, QueryPlan & query_plan
         }
         else
         {
-            auto filter_dag_info = std::move(std::get<FilterDAGInfo>(step));
-            main_plan.addStep(std::make_unique<FilterStep>(
+            auto main_filter_step = std::move(std::get<MainFilterStep>(step));
+            auto filter_dag_info = std::move(main_filter_step.filter);
+            auto filter_step = std::make_unique<FilterStep>(
                 main_plan.getCurrentHeader(),
-                std::move(filter_dag_info.actions), filter_dag_info.column_name, filter_dag_info.do_remove_column));
+                std::move(filter_dag_info.actions),
+                filter_dag_info.column_name,
+                filter_dag_info.do_remove_column);
+            filter_step->setCountOutputRows(main_filter_step.count_output_rows);
+            main_plan.addStep(std::move(filter_step));
         }
     }
 

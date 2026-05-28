@@ -9,7 +9,7 @@ SELECT * FROM test_output_rows FORMAT Null SETTINGS log_comment = '03916_case1';
 -- Case 2: WHERE fully pushed to PREWHERE (simple column filter)
 SELECT * FROM test_output_rows WHERE k < 100 FORMAT Null SETTINGS log_comment = '03916_case2';
 -- Case 3: WHERE NOT pushed to PREWHERE
-SELECT * FROM test_output_rows WHERE k < 100 FORMAT Null SETTINGS optimize_move_to_prewhere = 0, log_comment = '03916_case3';
+SELECT * FROM test_output_rows WHERE k < 100 FORMAT Null SETTINGS optimize_move_to_prewhere = 0, query_plan_optimize_prewhere = 0, log_comment = '03916_case3';
 
 SYSTEM FLUSH LOGS query_log;
 

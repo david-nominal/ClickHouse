@@ -290,7 +290,14 @@ void optimizeTreeSecondPass(
             });
     }
 
-    /// Do PREWHERE optimization after all possible filters including JOIN runtime filters were pushed down
+    /// Set `RowsAfterWhere` counting after all possible filters including JOIN runtime filters were pushed down.
+    traverseQueryPlan(stack, root,
+        [&](auto & frame_node)
+        {
+            setRowsAfterWhereCounting(frame_node);
+        });
+
+    /// Do PREWHERE optimization after all possible filters including JOIN runtime filters were pushed down.
     if (optimization_settings.optimize_prewhere)
     {
         traverseQueryPlan(stack, root,

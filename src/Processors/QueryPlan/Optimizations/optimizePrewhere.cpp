@@ -134,6 +134,25 @@ ActionsDAG splitAndFillPrewhereInfo(
     return std::move(split_result.second);
 }
 
+void setRowsAfterWhereCounting(QueryPlan::Node & parent_node)
+{
+    auto * filter_step = typeid_cast<FilterStep *>(parent_node.step.get());
+    if (!filter_step)
+        return;
+
+    if (parent_node.children.size() != 1)
+        return;
+
+    auto * child_node = parent_node.children.front();
+
+    auto * read_from_merge_tree_step = typeid_cast<ReadFromMergeTree *>(child_node->step.get());
+    if (!read_from_merge_tree_step)
+        return;
+
+    filter_step->setCountOutputRows(true);
+    read_from_merge_tree_step->setCountOutputRows(false);
+}
+
 void optimizePrewhere(QueryPlan::Node & parent_node, const bool remove_unused_columns)
 {
     /// Assume that there are at least 2 nodes:
@@ -157,14 +176,7 @@ void optimizePrewhere(QueryPlan::Node & parent_node, const bool remove_unused_co
     if (typeid_cast<ReadFromMerge *>(child_node->step.get()))
         return;
 
-    /// Check early if the child is ReadFromMergeTree so we can set RowsAfterWhere counting flags.
-    /// Pessimistic default: assume the FilterStep will remain (WHERE not fully pushed), so count at FilterStep.
     auto * read_from_merge_tree_step = typeid_cast<ReadFromMergeTree *>(child_node->step.get());
-    if (read_from_merge_tree_step)
-    {
-        filter_step->setCountOutputRows(true);
-        read_from_merge_tree_step->setCountOutputRows(false);
-    }
 
     const auto & storage_snapshot = source_step_with_filter->getStorageSnapshot();
     const auto & storage = storage_snapshot->storage;
